@@ -22,6 +22,8 @@ jobs:
       - name: Add public API address
         run: printf 'window.CARD_API_BASE_URL = "%s";\n' '${{ vars.CARD_API_BASE_URL }}' > frontend/api-config.js
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: frontend
