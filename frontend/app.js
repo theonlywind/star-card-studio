@@ -3,10 +3,10 @@ const $ = (id) => document.getElementById(id);
 let student = JSON.parse(localStorage.getItem("starCardStudent") || "null");
 let artDataUrl = "";
 const ATTRIBUTES = {
-  lightning: { label: "雷電", template: "./assets/lightning.png", weakness: "格鬥", resistance: "鋼", retreat: "★" },
-  grass: { label: "草", template: "./assets/grass.png", weakness: "火", resistance: "水", retreat: "★★" },
-  psychic: { label: "超能力", template: "./assets/psychic.png", weakness: "惡", resistance: "格鬥", retreat: "★" },
-  water: { label: "水", template: "./assets/water.png", weakness: "雷電", resistance: "火", retreat: "★★" },
+  lightning: { label: "雷電", template: "./assets/lightning.png", weakness: "格鬥 ×2", resistance: "—", retreat: "★" },
+  grass: { label: "草", template: "./assets/grass.png", weakness: "火焰 ×2", resistance: "—", retreat: "—" },
+  psychic: { label: "超能力", template: "./assets/psychic.png", weakness: "惡 ×2", resistance: "—", retreat: "★" },
+  water: { label: "水", template: "./assets/water.png", weakness: "雷電 ×2", resistance: "—", retreat: "★★" },
 };
 
 function message(id, text, ok = false) { const el = $(id); el.textContent = text; el.style.color = ok ? "#24733c" : "#a13d20"; }
@@ -42,7 +42,7 @@ async function generate(kind) {
 }
 function drawExport(format) {
   updatePreview(); const canvas = $("export-canvas"), ctx = canvas.getContext("2d"), card = readCard(), attribute = ATTRIBUTES[card.element];
-  const finish = () => { ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = "bold 48px sans-serif"; ctx.fillText(card.name.slice(0, 12), 225, 78); ctx.font = "bold 25px sans-serif"; ctx.fillText("HP 100", 845, 78); ctx.font = "bold 42px sans-serif"; ctx.fillText(card.ability, 105, 842); ctx.font = "22px sans-serif"; ctx.fillText("造成 70 點星力傷害", 105, 890); ctx.font = "18px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 105, 1050); ctx.font = "bold 20px sans-serif"; ctx.fillText(attribute.weakness, 175, 1325); ctx.fillText(attribute.resistance, 700, 1325); ctx.fillText(attribute.retreat, 910, 1325); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
+  const finish = () => { ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = "bold 25px sans-serif"; ctx.fillText("基礎", 35, 78); ctx.font = "bold 48px sans-serif"; ctx.fillText(card.name.slice(0, 12), 225, 78); ctx.font = "bold 25px sans-serif"; ctx.fillText("HP 100", 845, 78); ctx.font = "bold 42px sans-serif"; ctx.fillText(card.ability, 105, 842); ctx.font = "22px sans-serif"; ctx.fillText("造成 70 點星力傷害", 105, 890); ctx.font = "18px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 105, 1050); ctx.font = "bold 16px sans-serif"; ctx.fillText(`弱點 ${attribute.weakness}`, 85, 1325); ctx.fillText(`抵抗力 ${attribute.resistance}`, 405, 1325); ctx.fillText(`撤退 ${attribute.retreat}`, 770, 1325); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
   const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(80, 148, 886, 575); ctx.fillStyle = "white"; ctx.font = "bold 38px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 345, 435); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, 80, 148, 886, 575); finish(); }; image.src = artDataUrl; }; template.src = attribute.template;
 }
 

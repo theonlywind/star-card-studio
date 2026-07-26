@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>星級怪獸卡工作室</title>
-    <link rel="stylesheet" href="./style.css?v=20260726c" />
+    <link rel="stylesheet" href="./style.css?v=20260726d" />
   </head>
   <body>
     <header>
@@ -39,11 +39,12 @@
           </section>
           <section class="preview-wrap">
             <article id="card" class="card template-lightning">
+              <span class="base-label">基礎</span>
               <div class="card-top"><strong id="preview-name">閃電雲狐</strong><span id="preview-hp">HP 100</span></div>
               <div id="art" class="art"><span>等待你的 AI 圖畫</span></div>
               <div class="ability"><b id="preview-ability">星光衝刺</b><span>造成 70 點星力傷害</span></div>
               <p class="original-note">原創學習卡，僅供課堂創作。</p>
-              <div class="card-stats"><span><b id="preview-weakness">格鬥</b></span><span><b id="preview-resistance">鋼</b></span><span><b id="preview-retreat">★</b></span></div>
+              <div class="card-stats"><span>弱點 <b id="preview-weakness">格鬥 ×2</b></span><span>抵抗力 <b id="preview-resistance">—</b></span><span>撤退 <b id="preview-retreat">★</b></span></div>
             </article>
             <div class="exports"><button id="download-png" class="ghost">下載 PNG</button><button id="download-jpg" class="ghost">下載 JPEG</button><button onclick="window.print()" class="ghost">列印</button></div>
           </section>
@@ -61,6 +62,6 @@
     </main>
     <canvas id="export-canvas" width="1047" height="1502" hidden></canvas>
     <script src="./api-config.js"></script>
-    <script src="./app.js?v=20260726c"></script>
+    <script src="./app.js?v=20260726d"></script>
   </body>
 </html>
