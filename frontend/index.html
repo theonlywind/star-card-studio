@@ -29,7 +29,7 @@
         <div class="studio-grid">
           <section class="panel controls">
             <label>怪獸名稱<input id="card-name" maxlength="22" value="閃電雲狐" /></label>
-            <label>元素<select id="element"><option>火焰</option><option>海洋</option><option>森林</option><option>閃電</option><option>星空</option></select></label>
+            <label>屬性<select id="element"><option value="lightning">雷電 ⚡</option><option value="grass">草 🍃</option><option value="fire">火 🔥</option><option value="psychic">超能力 👁</option><option value="water">水 💧</option></select></label>
             <label>能力<input id="ability" maxlength="28" value="星光衝刺" /></label>
             <label>畫面描述<textarea id="prompt" maxlength="300" rows="5" placeholder="例如：一隻橙色小狐狸，在夜空雲朵上跳躍，有閃電尾巴，兒童繪本風格"></textarea></label>
             <p class="hint">請創作原創角色；不要輸入真實姓名、住址或電話，也不要用官方角色名稱。</p>
@@ -38,12 +38,12 @@
             <p id="studio-message" class="message"></p>
           </section>
           <section class="preview-wrap">
-            <article id="card" class="card element-forest">
-              <div class="card-top"><strong id="preview-name">閃電雲狐</strong><span id="preview-element">森林</span></div>
+            <article id="card" class="card template-lightning">
+              <div class="card-top"><strong id="preview-name">閃電雲狐</strong><span id="preview-hp">HP 100</span></div>
               <div id="art" class="art"><span>等待你的 AI 圖畫</span></div>
               <div class="ability"><b id="preview-ability">星光衝刺</b><span>造成 70 點星力傷害</span></div>
-              <p>這是一張原創學習卡，不是官方 Pokémon 卡。</p>
-              <footer>星級怪獸卡工作室 · 2026</footer>
+              <p class="original-note">原創學習卡，僅供課堂創作。</p>
+              <div class="card-stats"><span>弱點：<b id="preview-weakness">格鬥</b></span><span>抵抗：<b id="preview-resistance">鋼</b></span><span>撤退：<b id="preview-retreat">★</b></span></div>
             </article>
             <div class="exports"><button id="download-png" class="ghost">下載 PNG</button><button id="download-jpg" class="ghost">下載 JPEG</button><button onclick="window.print()" class="ghost">列印</button></div>
           </section>
@@ -59,7 +59,7 @@
         <div id="student-list"></div>
       </section>
     </main>
-    <canvas id="export-canvas" width="1488" height="2078" hidden></canvas>
+    <canvas id="export-canvas" width="1490" height="2096" hidden></canvas>
     <script src="./api-config.js"></script>
     <script src="./app.js"></script>
   </body>

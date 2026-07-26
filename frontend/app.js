@@ -2,6 +2,13 @@ const API = (window.CARD_API_BASE_URL || "").replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 let student = JSON.parse(localStorage.getItem("starCardStudent") || "null");
 let artDataUrl = "";
+const ATTRIBUTES = {
+  lightning: { label: "雷電", template: "./assets/lightning.png", weakness: "格鬥", resistance: "鋼", retreat: "★" },
+  grass: { label: "草", template: "./assets/grass.png", weakness: "火", resistance: "水", retreat: "★★" },
+  fire: { label: "火", template: "./assets/fire.png", weakness: "水", resistance: "草", retreat: "★★" },
+  psychic: { label: "超能力", template: "./assets/psychic.png", weakness: "惡", resistance: "格鬥", retreat: "★" },
+  water: { label: "水", template: "./assets/water.png", weakness: "雷電", resistance: "火", retreat: "★★" },
+};
 
 function message(id, text, ok = false) { const el = $(id); el.textContent = text; el.style.color = ok ? "#24733c" : "#a13d20"; }
 function requireApi(id) { if (API) return true; message(id, "尚未連接課堂伺服器，請通知老師完成部署設定。"); return false; }
@@ -19,9 +26,10 @@ function openStudio() {
 }
 function readCard() { return { name: $("card-name").value.trim() || "無名怪獸", element: $("element").value, ability: $("ability").value.trim() || "星光技能" }; }
 function updatePreview() {
-  const card = readCard();
-  $("preview-name").textContent = card.name; $("preview-element").textContent = card.element; $("preview-ability").textContent = card.ability;
-  $("card").className = `card element-${card.element}`;
+  const card = readCard(), attribute = ATTRIBUTES[card.element];
+  $("preview-name").textContent = card.name; $("preview-hp").textContent = "HP 100"; $("preview-ability").textContent = card.ability;
+  $("preview-weakness").textContent = attribute.weakness; $("preview-resistance").textContent = attribute.resistance; $("preview-retreat").textContent = attribute.retreat;
+  $("card").className = `card template-${card.element}`;
 }
 async function generate(kind) {
   if (!requireApi("studio-message")) return;
@@ -34,13 +42,9 @@ async function generate(kind) {
   } catch (error) { message("studio-message", error.message); }
 }
 function drawExport(format) {
-  updatePreview(); const canvas = $("export-canvas"), ctx = canvas.getContext("2d"), card = readCard();
-  ctx.fillStyle = "#f5d363"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#d9f0d1"; ctx.fillRect(55, 55, canvas.width - 110, canvas.height - 110);
-  ctx.fillStyle = "#162640"; ctx.font = "bold 82px sans-serif"; ctx.fillText(card.name, 110, 180); ctx.font = "42px sans-serif"; ctx.fillText(card.element, 1120, 180);
-  const finish = () => { ctx.fillStyle = "#fffdf4"; ctx.fillRect(110, 1370, 1268, 320); ctx.fillStyle = "#17233a"; ctx.font = "bold 66px sans-serif"; ctx.fillText(card.ability, 155, 1485); ctx.font = "42px sans-serif"; ctx.fillText("造成 70 點星力傷害", 155, 1575); ctx.font = "29px sans-serif"; ctx.fillText("原創學習卡，不是官方 Pokémon 卡", 155, 1840); ctx.fillText("星級怪獸卡工作室 · 2026", 155, 1930); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
-  if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(110, 260, 1268, 1020); ctx.fillStyle = "white"; ctx.font = "bold 54px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 445, 790); return finish(); }
-  const image = new Image(); image.onload = () => { ctx.drawImage(image, 110, 260, 1268, 1020); finish(); }; image.src = artDataUrl;
+  updatePreview(); const canvas = $("export-canvas"), ctx = canvas.getContext("2d"), card = readCard(), attribute = ATTRIBUTES[card.element], scale = 2;
+  const finish = () => { ctx.fillStyle = "#182033"; ctx.textBaseline = "middle"; ctx.font = "bold 43px sans-serif"; ctx.fillText(card.name.slice(0, 15), 62, 82); ctx.font = "bold 30px sans-serif"; ctx.fillText("HP 100", 1200, 82); ctx.fillStyle = "rgba(255,255,255,.87)"; ctx.fillRect(140, 1130, 1215, 142); ctx.strokeStyle = "#777"; ctx.strokeRect(140, 1130, 1215, 142); ctx.fillStyle = "#182033"; ctx.font = "bold 42px sans-serif"; ctx.fillText(card.ability, 168, 1184); ctx.font = "28px sans-serif"; ctx.fillText("造成 70 點星力傷害", 168, 1233); ctx.font = "24px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 410, 1470); ctx.font = "bold 24px sans-serif"; ctx.fillText(`弱點：${attribute.weakness}`, 100, 1872); ctx.fillText(`抵抗：${attribute.resistance}`, 500, 1872); ctx.fillText(`撤退：${attribute.retreat}`, 1050, 1872); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
+  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(70 * scale, 110 * scale, 615 * scale, 410 * scale); ctx.fillStyle = "white"; ctx.font = "bold 54px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 430, 790); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, 70 * scale, 110 * scale, 615 * scale, 410 * scale); finish(); }; image.src = artDataUrl; }; template.src = attribute.template;
 }
 
 $("join-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!requireApi("join-message")) return; try { const result = await api("/api/join", { method: "POST", body: JSON.stringify({ displayName: $("display-name").value.trim(), studentCode: $("student-code").value.trim() }) }); student = result.student; localStorage.setItem("starCardStudent", JSON.stringify(student)); openStudio(); } catch (error) { message("join-message", error.message); } });
