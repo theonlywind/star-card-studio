@@ -3,10 +3,10 @@ const $ = (id) => document.getElementById(id);
 let student = JSON.parse(localStorage.getItem("starCardStudent") || "null");
 let artDataUrl = "";
 const ATTRIBUTES = {
-  lightning: { label: "雷電", template: "./assets/lightning.png", weakness: "格鬥 ×2", resistance: "—", retreat: "★" },
-  grass: { label: "草", template: "./assets/grass.png", weakness: "火焰 ×2", resistance: "—", retreat: "—" },
-  psychic: { label: "超能力", template: "./assets/psychic.png", weakness: "惡 ×2", resistance: "—", retreat: "★" },
-  water: { label: "水", template: "./assets/water.png", weakness: "雷電 ×2", resistance: "—", retreat: "★★" },
+  lightning: { label: "雷電", template: "./assets/source-lightning.png", surface: "#ffe36c" },
+  grass: { label: "草", template: "./assets/source-grass.png", surface: "#cfeb6a" },
+  psychic: { label: "超能力", template: "./assets/source-psychic.webp", surface: "#efb9df" },
+  water: { label: "水", template: "./assets/source-water.png", surface: "#b8e9fa" },
 };
 
 function message(id, text, ok = false) { const el = $(id); el.textContent = text; el.style.color = ok ? "#24733c" : "#a13d20"; }
@@ -27,7 +27,6 @@ function readCard() { return { name: $("card-name").value.trim() || "無名怪�
 function updatePreview() {
   const card = readCard(), attribute = ATTRIBUTES[card.element];
   $("preview-name").textContent = card.name; $("preview-hp").textContent = "HP 100"; $("preview-ability").textContent = card.ability;
-  $("preview-weakness").textContent = attribute.weakness; $("preview-resistance").textContent = attribute.resistance; $("preview-retreat").textContent = attribute.retreat;
   $("card").className = `card template-${card.element}`;
 }
 async function generate(kind) {
@@ -42,8 +41,8 @@ async function generate(kind) {
 }
 function drawExport(format) {
   updatePreview(); const canvas = $("export-canvas"), ctx = canvas.getContext("2d"), card = readCard(), attribute = ATTRIBUTES[card.element];
-  const finish = () => { ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = "bold 25px sans-serif"; ctx.fillText("基礎", 35, 78); ctx.font = "bold 48px sans-serif"; ctx.fillText(card.name.slice(0, 12), 225, 78); ctx.font = "bold 25px sans-serif"; ctx.fillText("HP 100", 845, 78); ctx.font = "bold 42px sans-serif"; ctx.fillText(card.ability, 105, 842); ctx.font = "22px sans-serif"; ctx.fillText("造成 70 點星力傷害", 105, 890); ctx.font = "18px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 105, 1050); ctx.font = "bold 16px sans-serif"; ctx.fillText(`弱點 ${attribute.weakness}`, 85, 1325); ctx.fillText(`抵抗力 ${attribute.resistance}`, 405, 1325); ctx.fillText(`撤退 ${attribute.retreat}`, 770, 1325); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
-  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(80, 148, 886, 575); ctx.fillStyle = "white"; ctx.font = "bold 38px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 345, 435); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, 80, 148, 886, 575); finish(); }; image.src = artDataUrl; }; template.src = attribute.template;
+  const finish = () => { ctx.fillStyle = attribute.surface; ctx.fillRect(112, 23, 460, 53); ctx.fillRect(38, 423, 524, 286); ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = "bold 28px sans-serif"; ctx.fillText(card.name.slice(0, 12), 130, 52); ctx.font = "bold 15px sans-serif"; ctx.fillText("HP 100", 475, 52); ctx.font = "bold 25px sans-serif"; ctx.fillText(card.ability, 62, 495); ctx.font = "14px sans-serif"; ctx.fillText("造成 70 點星力傷害", 62, 528); ctx.font = "12px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 62, 605); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
+  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(47, 80, 506, 318); ctx.fillStyle = "white"; ctx.font = "bold 22px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 215, 245); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, 47, 80, 506, 318); finish(); }; image.src = artDataUrl; }; template.src = attribute.template;
 }
 
 $("join-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!requireApi("join-message")) return; try { const result = await api("/api/join", { method: "POST", body: JSON.stringify({ displayName: $("display-name").value.trim(), studentCode: $("student-code").value.trim() }) }); student = result.student; localStorage.setItem("starCardStudent", JSON.stringify(student)); openStudio(); } catch (error) { message("join-message", error.message); } });
