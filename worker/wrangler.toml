@@ -1,0 +1,8 @@
+name = "star-card-api"
+main = "src/index.js"
+compatibility_date = "2026-07-26"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "star-card-db"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"

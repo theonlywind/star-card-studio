@@ -1,0 +1,4 @@
+# Never commit .dev.vars. Put real values into Cloudflare Worker Secrets instead.
+OPENROUTER_API_KEY=
+TEACHER_ACCESS_CODE=
+ALLOWED_ORIGIN=http://localhost:8000
