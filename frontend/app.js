@@ -5,7 +5,6 @@ let artDataUrl = "";
 const ATTRIBUTES = {
   lightning: { label: "雷電", template: "./assets/lightning.png", weakness: "格鬥", resistance: "鋼", retreat: "★" },
   grass: { label: "草", template: "./assets/grass.png", weakness: "火", resistance: "水", retreat: "★★" },
-  fire: { label: "火", template: "./assets/fire.png", weakness: "水", resistance: "草", retreat: "★★" },
   psychic: { label: "超能力", template: "./assets/psychic.png", weakness: "惡", resistance: "格鬥", retreat: "★" },
   water: { label: "水", template: "./assets/water.png", weakness: "雷電", resistance: "火", retreat: "★★" },
 };
@@ -42,9 +41,9 @@ async function generate(kind) {
   } catch (error) { message("studio-message", error.message); }
 }
 function drawExport(format) {
-  updatePreview(); const canvas = $("export-canvas"), ctx = canvas.getContext("2d"), card = readCard(), attribute = ATTRIBUTES[card.element], scale = 2;
-  const finish = () => { ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = "bold 68px sans-serif"; ctx.fillText(card.name.slice(0, 12), 320, 94); ctx.font = "bold 34px sans-serif"; ctx.fillText("HP 100", 1190, 94); ctx.font = "bold 58px sans-serif"; ctx.fillText(card.ability, 150, 1190); ctx.font = "29px sans-serif"; ctx.fillText("造成 70 點星力傷害", 150, 1245); ctx.font = "24px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 150, 1495); ctx.font = "bold 27px sans-serif"; ctx.fillText(attribute.weakness, 170, 1945); ctx.fillText(attribute.resistance, 710, 1945); ctx.fillText(attribute.retreat, 1230, 1945); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
-  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(70 * scale, 110 * scale, 615 * scale, 410 * scale); ctx.fillStyle = "white"; ctx.font = "bold 54px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 430, 790); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, 70 * scale, 110 * scale, 615 * scale, 410 * scale); finish(); }; image.src = artDataUrl; }; template.src = attribute.template;
+  updatePreview(); const canvas = $("export-canvas"), ctx = canvas.getContext("2d"), card = readCard(), attribute = ATTRIBUTES[card.element];
+  const finish = () => { ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = "bold 48px sans-serif"; ctx.fillText(card.name.slice(0, 12), 225, 78); ctx.font = "bold 25px sans-serif"; ctx.fillText("HP 100", 845, 78); ctx.font = "bold 42px sans-serif"; ctx.fillText(card.ability, 105, 842); ctx.font = "22px sans-serif"; ctx.fillText("造成 70 點星力傷害", 105, 890); ctx.font = "18px sans-serif"; ctx.fillText("原創學習卡，僅供課堂創作。", 105, 1050); ctx.font = "bold 20px sans-serif"; ctx.fillText(attribute.weakness, 175, 1325); ctx.fillText(attribute.resistance, 700, 1325); ctx.fillText(attribute.retreat, 910, 1325); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
+  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(80, 148, 886, 575); ctx.fillStyle = "white"; ctx.font = "bold 38px sans-serif"; ctx.fillText("等待你的 AI 圖畫", 345, 435); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, 80, 148, 886, 575); finish(); }; image.src = artDataUrl; }; template.src = attribute.template;
 }
 
 $("join-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!requireApi("join-message")) return; try { const result = await api("/api/join", { method: "POST", body: JSON.stringify({ displayName: $("display-name").value.trim(), studentCode: $("student-code").value.trim() }) }); student = result.student; localStorage.setItem("starCardStudent", JSON.stringify(student)); openStudio(); } catch (error) { message("join-message", error.message); } });
