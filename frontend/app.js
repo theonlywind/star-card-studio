@@ -2,6 +2,9 @@ const API = (window.CARD_API_BASE_URL || "").replace(/\/$/, "");
 const $ = (id) => document.getElementById(id);
 let student = JSON.parse(localStorage.getItem("starCardStudent") || "null");
 let artDataUrl = "";
+// The artwork window is shared by the on-screen preview and downloaded card.
+// It deliberately sits inside (rather than over) the original card frame.
+const ART_FRAME = { x: 47, y: 80, width: 506, height: 318, radius: 5 };
 const ATTRIBUTES = {
   lightning: { label: "雷電", template: "./assets/source-lightning.png", surface: "#ffe36c" },
   grass: { label: "草", template: "./assets/source-grass.png", surface: "#cfeb6a" },
@@ -30,6 +33,26 @@ function updatePreview() {
   $("preview-name").textContent = card.name; $("preview-hp").textContent = "HP 100"; $("preview-ability").textContent = card.ability;
   $("card").className = `card template-${card.element}`;
 }
+function drawImageCover(ctx, image, frame, scale) {
+  const x = frame.x * scale, y = frame.y * scale;
+  const width = frame.width * scale, height = frame.height * scale;
+  const imageRatio = image.naturalWidth / image.naturalHeight;
+  const frameRatio = width / height;
+  let sourceX = 0, sourceY = 0, sourceWidth = image.naturalWidth, sourceHeight = image.naturalHeight;
+  if (imageRatio > frameRatio) {
+    sourceWidth = image.naturalHeight * frameRatio;
+    sourceX = (image.naturalWidth - sourceWidth) / 2;
+  } else {
+    sourceHeight = image.naturalWidth / frameRatio;
+    sourceY = (image.naturalHeight - sourceHeight) / 2;
+  }
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, frame.radius * scale);
+  ctx.clip();
+  ctx.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  ctx.restore();
+}
 async function generate(kind) {
   if (!requireApi("studio-message")) return;
   const prompt = $("prompt").value.trim(); if (prompt.length < 8) return message("studio-message", "請寫至少 8 個字描述你的原創怪獸。 ");
@@ -44,7 +67,7 @@ function drawExport(format) {
   updatePreview(); const canvas = $("export-canvas"), card = readCard(), design = designFor(card);
   canvas.width = design.width; canvas.height = design.height; const ctx = canvas.getContext("2d");
   const finish = () => { const scale = canvas.width / 600; ctx.fillStyle = design.surface; ctx.fillRect(112 * scale, 23 * scale, 460 * scale, 53 * scale); ctx.fillRect(38 * scale, 423 * scale, 524 * scale, 286 * scale); ctx.fillStyle = "#121725"; ctx.textBaseline = "middle"; ctx.font = `bold ${28 * scale}px sans-serif`; ctx.fillText(card.name.slice(0, 12), 130 * scale, 52 * scale); ctx.font = `bold ${15 * scale}px sans-serif`; ctx.fillText("HP 100", 475 * scale, 52 * scale); ctx.font = `bold ${25 * scale}px sans-serif`; ctx.fillText(card.ability, 62 * scale, 495 * scale); ctx.font = `${14 * scale}px sans-serif`; ctx.fillText("造成 70 點星力傷害", 62 * scale, 528 * scale); ctx.font = `${12 * scale}px sans-serif`; ctx.fillText("原創學習卡，僅供課堂創作。", 62 * scale, 605 * scale); const link = document.createElement("a"); link.download = `${card.name || "star-card"}.${format === "jpeg" ? "jpg" : "png"}`; link.href = canvas.toDataURL(`image/${format}`, .94); link.click(); };
-  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); const scale = canvas.width / 600, artRect = [47, 80, 506, 318]; if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.fillRect(...artRect.map((value) => value * scale)); ctx.fillStyle = "white"; ctx.font = `bold ${22 * scale}px sans-serif`; ctx.fillText("等待你的 AI 圖畫", 215 * scale, 245 * scale); return finish(); } const image = new Image(); image.onload = () => { ctx.drawImage(image, ...artRect.map((value) => value * scale)); finish(); }; image.src = artDataUrl; }; template.src = design.template;
+  const template = new Image(); template.onload = () => { ctx.drawImage(template, 0, 0, canvas.width, canvas.height); const scale = canvas.width / 600; if (!artDataUrl) { ctx.fillStyle = "#88add0"; ctx.beginPath(); ctx.roundRect(ART_FRAME.x * scale, ART_FRAME.y * scale, ART_FRAME.width * scale, ART_FRAME.height * scale, ART_FRAME.radius * scale); ctx.fill(); ctx.fillStyle = "white"; ctx.font = `bold ${22 * scale}px sans-serif`; ctx.fillText("等待你的 AI 圖畫", 215 * scale, 245 * scale); return finish(); } const image = new Image(); image.onload = () => { drawImageCover(ctx, image, ART_FRAME, scale); finish(); }; image.src = artDataUrl; }; template.src = design.template;
 }
 
 $("join-form").addEventListener("submit", async (event) => { event.preventDefault(); if (!requireApi("join-message")) return; try { const result = await api("/api/join", { method: "POST", body: JSON.stringify({ displayName: $("display-name").value.trim(), studentCode: $("student-code").value.trim() }) }); student = result.student; localStorage.setItem("starCardStudent", JSON.stringify(student)); openStudio(); } catch (error) { message("join-message", error.message); } });
