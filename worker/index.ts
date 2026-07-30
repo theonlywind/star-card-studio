@@ -216,7 +216,7 @@ async function startVideo(request: Request, env: Env) {
       ratio: "16:9",
       duration: 10,
       watermark: false,
-      generate_audio: false,
+      generate_audio: true,
       safety_identifier: student.id,
     }),
   });
