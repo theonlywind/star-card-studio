@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>小小 AI 電影工作室</title>
+  <style>
+    :root { font-family: system-ui,-apple-system,"PingFang HK","Microsoft JhengHei",sans-serif; color:#29233b; background:#f7f2ff; }
+    * { box-sizing:border-box; } body { margin:0; } header { background:#fff; border-bottom:1px solid #ece3f6; padding:15px 6vw; display:flex; justify-content:space-between; align-items:center; gap:16px; }
+    .brand { font-weight:800; font-size:20px; } .brand small { display:block; font-size:12px; font-weight:500; color:#756d83; } main { max-width:980px; margin:auto; padding:42px 24px 72px; }
+    h1 { font-size:clamp(32px,6vw,58px); margin:8px 0; letter-spacing:-.07em; } h2 { margin-top:0; } .eyebrow { color:#a54e8a; font-weight:800; } .lede { font-size:18px; max-width:650px; line-height:1.7; }
+    .card { background:#fff; border:1px solid #e6ddf1; border-radius:24px; padding:24px; margin:22px 0; box-shadow:0 12px 30px #67507d12; } .hide { display:none!important; }
+    label { font-weight:700; display:block; margin:12px 0 6px; } input,textarea { width:100%; border:1px solid #dcd1ea; border-radius:12px; padding:13px; font:inherit; } textarea { min-height:108px; resize:vertical; }
+    button { border:0; border-radius:12px; padding:12px 16px; font:inherit; font-weight:800; color:#fff; background:#7656d8; cursor:pointer; margin:12px 8px 0 0; } button.alt { background:#edae35; color:#49320c; } button:disabled { opacity:.55; cursor:wait; }
+    .note { color:#756d83; font-size:14px; } .status { min-height:24px; font-weight:700; color:#a54e8a; } .frames { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin:18px 0; } .frame { background:#f9f6fc; border-radius:16px; padding:12px; min-height:140px; }
+    img,video { display:block; width:100%; border-radius:12px; margin-top:8px; aspect-ratio:16/9; object-fit:cover; background:#eee; } .teacher { border-top:4px solid #edae35; }
+    @media (max-width:640px) { main { padding:28px 16px; } .frames { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header><div class="brand">▶ 小小 AI 電影工作室<small>兩張圖，變成一段小電影</small></div><a href="#teacher">教師控制台</a></header>
+  <main>
+    <p class="eyebrow">AI 影片創作</p><h1>先畫兩張圖，<br>再變成電影。</h1>
+    <p class="lede">用簡單選擇和自己的文字，設計一段 10 秒小故事。請不要輸入真名、地址、電話等個人資料。</p>
+    <section id="login" class="card"><h2>學生登入</h2><label for="student-name">創作暱稱</label><input id="student-name" maxlength="18" placeholder="例如：快樂小企鵝"><label for="student-code">學生代碼</label><input id="student-code" placeholder="例如：MOVIE-123-ABCD"><button id="join-button">開始創作</button><p id="join-status" class="status"></p></section>
+    <section id="studio" class="card hide"><h2>我的小電影</h2><p id="quota" class="note"></p><label for="story">故事內容</label><textarea id="story" placeholder="一隻小狐狸在月光森林找到會發光的種子，最後把種子種在山頂。"></textarea><p class="note">可加入：主角、地方、動作、心情、結局。AI 會先畫開始和結尾兩張圖。</p><button id="first-button">生成開始圖</button><button id="last-button" class="alt">生成結尾圖</button><p id="image-status" class="status"></p><div class="frames"><div class="frame"><strong>開始圖</strong><img id="first-image" class="hide" alt="開始圖"></div><div class="frame"><strong>結尾圖</strong><img id="last-image" class="hide" alt="結尾圖"></div></div><button id="video-button">生成 480p・10 秒影片</button><p id="video-status" class="status"></p><video id="movie" class="hide" controls></video></section>
+    <section id="teacher" class="card teacher"><h2>教師控制台</h2><label for="teacher-code">教師代碼</label><input id="teacher-code" type="password" placeholder="教師代碼"><button id="codes-button" class="alt">建立 10 個學生代碼</button><p id="teacher-status" class="status"></p><textarea id="new-codes" class="hide" readonly aria-label="新學生代碼"></textarea></section>
+  </main>
+  <script>
+    const API = "https://star-card-studio-hk.emiya0404.chatgpt.site/api";
+    const el = (id) => document.getElementById(id);
+    let student = null, firstFrame = "", lastFrame = "";
+    const status = (id, text) => { el(id).textContent = text; };
+    const setBusy = (id, busy) => { el(id).disabled = busy; };
+    async function request(path, options = {}) {
+      const headers = { "content-type": "application/json", ...(options.headers || {}) };
+      const response = await fetch(`${API}${path}`, { ...options, headers });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "服務暫時未能使用。");
+      return data;
+    }
+    function savedCode() { return localStorage.getItem("movieCode") || ""; }
+    async function join() {
+      const displayName = el("student-name").value.trim();
+      const classCode = el("student-code").value.trim().toUpperCase();
+      setBusy("join-button", true); status("join-status", "正在登入……");
+      try {
+        const data = await request("/join", { method:"POST", body:JSON.stringify({ displayName, classCode }) });
+        student = data.student; localStorage.setItem("movieCode", classCode);
+        el("login").classList.add("hide"); el("studio").classList.remove("hide");
+        el("quota").textContent = `${student.displayName}：還有 ${student.videoLimit - student.videoUsed} 次影片配額。`;
+      } catch (error) { status("join-status", error.message); }
+      finally { setBusy("join-button", false); }
+    }
+    function imagePrompt(position) { return `${position}畫面：${el("story").value.trim()} 16:9 橫向動畫電影畫面，兒童友善，沒有文字。`; }
+    async function makeImage(kind) {
+      if (!student) return; const button = `${kind}-button`, image = `${kind}-image`;
+      setBusy(button, true); status("image-status", "AI 正在畫圖，請等一等……");
+      try {
+        const data = await request("/image", { method:"POST", body:JSON.stringify({ prompt:imagePrompt(kind === "first" ? "故事開始" : "故事結尾"), classCode:savedCode() }) });
+        if (kind === "first") firstFrame = data.image; else lastFrame = data.image;
+        el(image).src = data.image; el(image).classList.remove("hide"); status("image-status", "完成！可以再生成另一張圖。 ");
+      } catch (error) { status("image-status", error.message); }
+      finally { setBusy(button, false); }
+    }
+    async function makeVideo() {
+      if (!firstFrame || !lastFrame) return status("video-status", "請先生成開始圖和結尾圖。");
+      setBusy("video-button", true); status("video-status", "影片正在排隊生成，約需幾分鐘……");
+      try {
+        const data = await request("/video", { method:"POST", body:JSON.stringify({ classCode:savedCode(), prompt:el("story").value.trim(), firstFrame, lastFrame }) });
+        el("quota").textContent = `${student.displayName}：還有 ${data.videoLimit - data.videoUsed} 次影片配額。`;
+        await poll(data.jobId);
+      } catch (error) { status("video-status", error.message); setBusy("video-button", false); }
+    }
+    async function poll(jobId) {
+      const timer = setInterval(async () => {
+        try {
+          const data = await request(`/video/${jobId}`);
+          if (data.job.status === "succeeded" && data.job.video_url) { clearInterval(timer); el("movie").src = data.job.video_url; el("movie").classList.remove("hide"); status("video-status", "完成！按播放鍵欣賞你的電影。 "); setBusy("video-button", false); }
+          if (data.job.status === "failed") { clearInterval(timer); status("video-status", data.job.error_message || "影片生成失敗，請再試一次。"); setBusy("video-button", false); }
+        } catch (error) { clearInterval(timer); status("video-status", error.message); setBusy("video-button", false); }
+      }, 5000);
+    }
+    async function createCodes() {
+      setBusy("codes-button", true); status("teacher-status", "正在建立代碼……");
+      try { const data = await request("/teacher/codes", { method:"POST", headers:{ "x-teacher-code":el("teacher-code").value }, body:JSON.stringify({ count:10 }) }); el("new-codes").value = data.codes.join("\n"); el("new-codes").classList.remove("hide"); status("teacher-status", "已建立 10 個學生代碼，可複製給學生。 "); }
+      catch (error) { status("teacher-status", error.message); } finally { setBusy("codes-button", false); }
+    }
+    el("join-button").addEventListener("click", join); el("first-button").addEventListener("click", () => makeImage("first")); el("last-button").addEventListener("click", () => makeImage("last")); el("video-button").addEventListener("click", makeVideo); el("codes-button").addEventListener("click", createCodes);
+  </script>
+</body>
+</html>
