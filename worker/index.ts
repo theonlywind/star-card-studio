@@ -67,6 +67,10 @@ function studentView(row: Row) {
     displayName: row.display_name,
     videoLimit: Number(row.video_limit),
     videoUsed: Number(row.video_used),
+    startImageLimit: Number(row.start_image_limit),
+    startImageUsed: Number(row.start_image_used),
+    endImageLimit: Number(row.end_image_limit),
+    endImageUsed: Number(row.end_image_used),
     status: row.status,
   };
 }
@@ -101,7 +105,7 @@ async function join(request: Request, env: Env) {
   await env.DB.prepare(
     "INSERT INTO class_students (id,code_id,display_name,created_at,updated_at) VALUES (?,?,?,?,?)",
   ).bind(id, found.code_id, displayName, stamp, stamp).run();
-  return json(request, { student: { id, displayName, videoLimit: 5, videoUsed: 0, status: "active" } }, 201);
+  return json(request, { student: { id, displayName, videoLimit: 5, videoUsed: 0, startImageLimit: 5, startImageUsed: 0, endImageLimit: 5, endImageUsed: 0, status: "active" } }, 201);
 }
 
 async function makeCodes(request: Request, env: Env) {
@@ -136,6 +140,14 @@ async function updateStudent(request: Request, env: Env) {
     await env.DB.prepare("UPDATE class_students SET video_used=0,updated_at=? WHERE id=?").bind(now(), id).run();
   } else if (action === "bonus") {
     await env.DB.prepare("UPDATE class_students SET video_limit=video_limit+1,updated_at=? WHERE id=?").bind(now(), id).run();
+  } else if (action === "resetStartImage") {
+    await env.DB.prepare("UPDATE class_students SET start_image_used=0,updated_at=? WHERE id=?").bind(now(), id).run();
+  } else if (action === "bonusStartImage") {
+    await env.DB.prepare("UPDATE class_students SET start_image_limit=start_image_limit+1,updated_at=? WHERE id=?").bind(now(), id).run();
+  } else if (action === "resetEndImage") {
+    await env.DB.prepare("UPDATE class_students SET end_image_used=0,updated_at=? WHERE id=?").bind(now(), id).run();
+  } else if (action === "bonusEndImage") {
+    await env.DB.prepare("UPDATE class_students SET end_image_limit=end_image_limit+1,updated_at=? WHERE id=?").bind(now(), id).run();
   } else if (action === "toggle") {
     await env.DB.prepare(
       "UPDATE class_students SET status=CASE status WHEN 'active' THEN 'paused' ELSE 'active' END,updated_at=? WHERE id=?",
@@ -164,8 +176,13 @@ async function generateImage(request: Request, env: Env) {
   const input = await body(request);
   const prompt = clean(input.prompt, 700);
   const classCode = clean(input.classCode, 32).toUpperCase();
+  const frame = clean(input.frame, 10);
   const student = await findStudent(env, classCode);
   if (!student?.id || student.status !== "active") return json(request, { error: "學生帳戶不可使用。" }, 403);
+  if (frame !== "start" && frame !== "end") return json(request, { error: "請選擇開始圖或結尾圖。" }, 400);
+  const usedKey = frame === "start" ? "start_image_used" : "end_image_used";
+  const limitKey = frame === "start" ? "start_image_limit" : "end_image_limit";
+  if (Number(student[usedKey]) >= Number(student[limitKey])) return json(request, { error: `${frame === "start" ? "開始圖" : "結尾圖"}配額已用完，請找老師協助。` }, 429);
   if (!env.OPENROUTER_API_KEY) return json(request, { error: "未設定圖片生成服務。" }, 503);
   if (!safePrompt(prompt)) return json(request, { error: "請使用原創、兒童友善描述，且不要輸入個人資料。" }, 400);
 
@@ -181,7 +198,8 @@ async function generateImage(request: Request, env: Env) {
   const payload = await response.json<{ data?: Array<{ b64_json?: string }> }>().catch(() => ({}));
   const encoded = payload.data?.[0]?.b64_json;
   if (!response.ok || !encoded) return json(request, { error: "圖片暫時未能生成，請稍後再試。" }, 502);
-  return json(request, { image: `data:image/png;base64,${encoded}` });
+  await env.DB.prepare(`UPDATE class_students SET ${usedKey}=${usedKey}+1,updated_at=? WHERE id=?`).bind(now(), student.id).run();
+  return json(request, { image: `data:image/png;base64,${encoded}`, imageUsed: Number(student[usedKey]) + 1, imageLimit: Number(student[limitKey]) });
 }
 
 async function startVideo(request: Request, env: Env) {
