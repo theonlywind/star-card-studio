@@ -1,7 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { schemaStatements } from "../db/schema";
+import { schemaStatements, classSchemaStatements } from "../db/schema";
 
 interface Env {
   ASSETS: Fetcher;
@@ -14,6 +14,7 @@ interface Env {
     };
   };
   OPENROUTER_API_KEY?: string;
+  ARK_API_KEY?: string;
   CLASS_ACCESS_CODE?: string;
   TEACHER_ACCESS_CODE?: string;
 }
@@ -32,6 +33,10 @@ interface ExecutionContext {
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+
+    if (url.pathname.startsWith("/api/")) {
+      return handleApi(request, env, url);
+    }
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
@@ -53,13 +58,13 @@ export default worker;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "https://theonlywind.github.io", "access-control-allow-methods": "GET,POST,PATCH,OPTIONS", "access-control-allow-headers": "content-type,x-teacher-code" },
   });
 
 const now = () => new Date().toISOString();
 
 async function ensureSchema(db: D1Database) {
-  await db.batch(schemaStatements.map((statement) => db.prepare(statement)));
+  await db.batch([...schemaStatements, ...classSchemaStatements].map((statement) => db.prepare(statement)));
 }
 
 async function readJson(request: Request) {
@@ -84,7 +89,27 @@ function isSafePrompt(prompt: string) {
 }
 
 async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
+  if (request.method === "OPTIONS") return json({ ok: true });
   await ensureSchema(env.DB);
+
+  const clean = (v: unknown, max = 500) => typeof v === "string" ? v.trim().slice(0, max) : "";
+  const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((x) => x.toString(16).padStart(2, "0")).join("");
+  const findStudent = async (code: string) => env.DB.prepare("SELECT s.*, c.active AS code_active FROM class_codes c LEFT JOIN class_students s ON s.code_id=c.id WHERE c.code_hash=?").bind(await digest(code.toUpperCase())).first<Record<string, unknown>>();
+  const teacherOk = (request: Request, body: Record<string, unknown>) => clean(request.headers.get("x-teacher-code") || body.teacherCode, 128) === clean(env.TEACHER_ACCESS_CODE, 128) && Boolean(env.TEACHER_ACCESS_CODE);
+
+  if (url.pathname === "/api/join" && request.method === "POST") {
+    const body = await readJson(request), displayName = clean(body.displayName, 18), code = clean(body.classCode, 32).toUpperCase();
+    const found = await findStudent(code);
+    if (!displayName || !found || !found.code_active) return json({ error: "學生代碼不正確或已停用。" }, 401);
+    if (found.id) return json({ student: { id:found.id, displayName:found.display_name, videoLimit:found.video_limit, videoUsed:found.video_used, status:found.status } });
+    const id=crypto.randomUUID(), stamp=now(); await env.DB.prepare("INSERT INTO class_students (id,code_id,display_name,created_at,updated_at) VALUES (?,?,?,?,?)").bind(id,found.code_id,displayName,stamp,stamp).run();
+    return json({ student:{id,displayName,videoLimit:5,videoUsed:0,status:"active"} },201);
+  }
+
+  if (url.pathname === "/api/teacher/codes" && request.method === "POST") {
+    const body=await readJson(request); if(!teacherOk(request,body)) return json({error:"教師代碼不正確。"},401);
+    const codes:string[]=[]; for(let i=0;i<Math.min(30,Math.max(1,Number(body.count)||10));i++){const code=`MOVIE-${Math.floor(100+Math.random()*900)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0,4).toUpperCase()}`;codes.push(code);await env.DB.prepare("INSERT INTO class_codes (id,code_hash,label,created_at) VALUES (?,?,?,?)").bind(crypto.randomUUID(),await digest(code),`學生 ${i+1}`,now()).run();} return json({codes},201);
+  }
 
   if (url.pathname === "/api/students" && request.method === "POST") {
     const body = await readJson(request);
