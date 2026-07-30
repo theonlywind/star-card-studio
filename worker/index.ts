@@ -36,7 +36,7 @@ function corsHeaders(request: Request) {
   return {
     "access-control-allow-origin": origin === allowedOrigin ? origin : allowedOrigin,
     "access-control-allow-headers": "content-type,x-teacher-code",
-    "access-control-allow-methods": "GET,POST,PATCH,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "cache-control": "no-store",
     "content-type": "application/json; charset=utf-8",
     vary: "Origin",
@@ -143,6 +143,20 @@ async function updateStudent(request: Request, env: Env) {
   } else {
     return json(request, { error: "無效操作。" }, 400);
   }
+  return json(request, { ok: true });
+}
+
+async function deleteStudent(request: Request, env: Env) {
+  const input = await body(request);
+  if (!teacherAllowed(request, env, input)) return json(request, { error: "教師代碼不正確。" }, 401);
+  const id = clean(input.id, 100);
+  const row = await env.DB.prepare("SELECT code_id FROM class_students WHERE id=?").bind(id).first<Row>();
+  if (!row?.code_id) return json(request, { error: "找不到學生。" }, 404);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE class_codes SET active=0 WHERE id=?").bind(row.code_id),
+    env.DB.prepare("DELETE FROM video_jobs WHERE student_id=?").bind(id),
+    env.DB.prepare("DELETE FROM class_students WHERE id=?").bind(id),
+  ]);
   return json(request, { ok: true });
 }
 
@@ -255,6 +269,7 @@ async function api(request: Request, env: Env) {
     if (path === "/api/teacher/codes" && request.method === "POST") return await makeCodes(request, env);
     if (path === "/api/teacher/students" && request.method === "GET") return await listStudents(request, env);
     if (path === "/api/teacher/students" && request.method === "PATCH") return await updateStudent(request, env);
+    if (path === "/api/teacher/students" && request.method === "DELETE") return await deleteStudent(request, env);
     if (path === "/api/image" && request.method === "POST") return await generateImage(request, env);
     if (path === "/api/video" && request.method === "POST") return await startVideo(request, env);
     if (path.startsWith("/api/video/") && request.method === "GET") return await videoStatus(request, env, path.slice(11));
