@@ -33,7 +33,7 @@
     const status = (id, text) => { el(id).textContent = text; };
     const setBusy = (id, busy) => { el(id).disabled = busy; };
     async function request(path, options = {}) {
-      const headers = { "content-type": "application/json", ...(options.headers || {}) };
+      const headers = { ...(options.headers || {}) };
       const response = await fetch(`${API}${path}`, { ...options, headers });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "服務暫時未能使用。");
@@ -83,7 +83,7 @@
     }
     async function createCodes() {
       setBusy("codes-button", true); status("teacher-status", "正在建立代碼……");
-      try { const data = await request("/teacher/codes", { method:"POST", headers:{ "x-teacher-code":el("teacher-code").value }, body:JSON.stringify({ count:10 }) }); el("new-codes").value = data.codes.join("\n"); el("new-codes").classList.remove("hide"); status("teacher-status", "已建立 10 個學生代碼，可複製給學生。 "); }
+      try { const data = await request("/teacher/codes", { method:"POST", body:JSON.stringify({ count:10, teacherCode:el("teacher-code").value }) }); el("new-codes").value = data.codes.join("\n"); el("new-codes").classList.remove("hide"); status("teacher-status", "已建立 10 個學生代碼，可複製給學生。 "); }
       catch (error) { status("teacher-status", error.message); } finally { setBusy("codes-button", false); }
     }
     el("join-button").addEventListener("click", join); el("first-button").addEventListener("click", () => makeImage("first")); el("last-button").addEventListener("click", () => makeImage("last")); el("video-button").addEventListener("click", makeVideo); el("codes-button").addEventListener("click", createCodes);
