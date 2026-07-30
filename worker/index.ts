@@ -177,8 +177,9 @@ async function startVideo(request: Request, env: Env) {
   const firstFrame = clean(input.firstFrame, 10_000_000);
   const lastFrame = clean(input.lastFrame, 10_000_000);
   if (!env.ARK_API_KEY) return json(request, { error: "未設定 ARK_API_KEY。" }, 503);
-  if (!safePrompt(prompt) || !firstFrame.startsWith("data:image/") || !lastFrame.startsWith("data:image/")) {
-    return json(request, { error: "請先生成兩張原創、兒童友善圖片。" }, 400);
+  if (!safePrompt(prompt)) return json(request, { error: "請先輸入至少 8 個字的原創、兒童友善故事內容。" }, 400);
+  if (!firstFrame.startsWith("data:image/") || !lastFrame.startsWith("data:image/")) {
+    return json(request, { error: "請先生成開始圖和結尾圖。" }, 400);
   }
 
   const student = await findStudent(env, classCode);
