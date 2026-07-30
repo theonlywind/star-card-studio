@@ -1,144 +1,86 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 
-type Student = {
-  id: string;
-  displayName: string;
-  trialLimit: number;
-  trialUsed: number;
-  finalLimit: number;
-  finalUsed: number;
-  status: string;
+const choices = {
+  hero: ["小貓", "小狗", "機械人", "小恐龍", "小怪獸", "魔法小孩"],
+  place: ["彩虹森林", "海底世界", "太空站", "魔法學校", "糖果城市", "雨天街道"],
+  event: ["發現一扇魔法門", "遇到一位新朋友", "找到發光寶物", "追著一隻蝴蝶", "打開神奇雨傘", "聽到求救聲"],
+  ending: ["飛到彩虹天空", "到達一座雲上城堡", "和朋友一起跳舞", "變成勇敢的小英雄", "找到一片星光海", "把寶物送回家"],
+  style: ["3D 兒童動畫", "明亮卡通插畫", "積木玩具世界", "柔和水彩動畫", "可愛像素遊戲"],
+  action: ["慢慢向前走", "輕輕飛上天空", "轉身望向鏡頭", "打開手中的物品", "和朋友揮手", "開心地跳起來"],
 };
 
-type TeacherStudent = {
-  id: string;
-  display_name: string;
-  trial_limit: number;
-  trial_used: number;
-  final_limit: number;
-  final_used: number;
-  status: string;
-  generations: number;
-};
-
-const classCodeHint = "STAR-CARD-2026";
-const defaultPrompt = "一隻水和電屬性的原創小精靈，圓形身體，藍色鱗片，尾巴像閃電，在雨後海邊跳起來，明亮兒童插畫風";
+type Key = keyof typeof choices;
 
 export default function Home() {
-  const [mode, setMode] = useState<"student" | "teacher">("student");
-  const [student, setStudent] = useState<Student | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [classCode, setClassCode] = useState("");
-  const [teacherCode, setTeacherCode] = useState("");
-  const [prompt, setPrompt] = useState(defaultPrompt);
-  const [name, setName] = useState("雨電獸");
-  const [element, setElement] = useState("水・電");
-  const [hp, setHp] = useState("80");
-  const [skill, setSkill] = useState("閃浪衝擊");
-  const [story, setStory] = useState("暴雨過後，牠會用尾巴的電光為迷路的人照路。 ");
-  const [artSeed, setArtSeed] = useState(196);
-  const [artDataUrl, setArtDataUrl] = useState("");
-  const [notice, setNotice] = useState("先設計你的原創精靈，再開始試畫。 ");
-  const [busy, setBusy] = useState(false);
-  const [teacherStudents, setTeacherStudents] = useState<TeacherStudent[]>([]);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const [picked, setPicked] = useState<Record<Key, string>>({
+    hero: choices.hero[0], place: choices.place[0], event: choices.event[0], ending: choices.ending[0], style: choices.style[0], action: choices.action[0],
+  });
+  const [title, setTitle] = useState("我的小電影");
+  const [copied, setCopied] = useState("");
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem("star-card-student");
-    if (saved) setStudent(JSON.parse(saved));
-  }, []);
+  const startPrompt = useMemo(() => `請生成一張 ${picked.style}、兒童友善、16:9 橫向的圖片：${picked.hero} 在 ${picked.place}，${picked.event}。畫面明亮、角色表情清楚、沒有文字、沒有水印。`, [picked]);
+  const endPrompt = useMemo(() => `請生成一張 ${picked.style}、兒童友善、16:9 橫向的圖片：${picked.hero} ${picked.ending}。和第一張圖保持相同角色、服裝和畫風；畫面明亮、沒有文字、沒有水印。`, [picked]);
+  const videoPrompt = useMemo(() => `${picked.hero} 在 ${picked.place} ${picked.action}，因為 ${picked.event}，最後 ${picked.ending}。動作自然連續，鏡頭平穩跟隨，保持 ${picked.style}，不加文字。`, [picked]);
 
-  const trialLeft = student ? Math.max(0, student.trialLimit - student.trialUsed) : 0;
-  const finalLeft = student ? Math.max(0, student.finalLimit - student.finalUsed) : 0;
-  const artStyle = useMemo(() => ({ "--hue": artSeed } as React.CSSProperties), [artSeed]);
-
-  async function join(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true);
-    const response = await fetch("/api/students", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ displayName, classCode }) });
-    const result = await response.json();
-    setBusy(false);
-    if (!response.ok) return setNotice(result.error);
-    const next: Student = { id: result.id, displayName: result.displayName, trialLimit: result.trialLimit, trialUsed: result.trialUsed, finalLimit: result.finalLimit, finalUsed: result.finalUsed, status: result.status };
-    setStudent(next);
-    window.localStorage.setItem("star-card-student", JSON.stringify(next));
-    setNotice("歡迎！先完成卡牌資料，再按「快速試畫」。");
+  async function copy(label: string, text: string) {
+    await navigator.clipboard.writeText(text);
+    setCopied(label);
+    window.setTimeout(() => setCopied(""), 1800);
   }
+  function choose(key: Key, value: string) { setPicked((old) => ({ ...old, [key]: value })); }
 
-  async function generate(kind: "trial" | "final") {
-    if (!student) return;
-    setBusy(true);
-    const response = await fetch("/api/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ studentId: student.id, kind, prompt }) });
-    const result = await response.json();
-    setBusy(false);
-    if (!response.ok) return setNotice(result.error);
-    const next = { ...student, trialUsed: student.trialUsed + (kind === "trial" ? 1 : 0), finalUsed: student.finalUsed + (kind === "final" ? 1 : 0) };
-    setStudent(next);
-    window.localStorage.setItem("star-card-student", JSON.stringify(next));
-    if (result.artDataUrl) setArtDataUrl(result.artDataUrl);
-    if (result.artSeed !== undefined) setArtSeed(result.artSeed);
-    setNotice(kind === "trial" ? "試畫完成！想一想：下一版只要改哪一個元素？" : "最終插圖完成！現在可下載你的卡。 ");
-  }
+  return <main>
+    <header className="topbar">
+      <div className="brand"><span>▶</span><div><strong>小小 AI 電影工作室</strong><small>兩張圖，變成一段小電影</small></div></div>
+      <div className="header-tip">先揀選，再生成</div>
+    </header>
+    <section className="hero">
+      <div><p className="eyebrow">最後一堂・AI 影片創作</p><h1>你的故事，<br/><em>現在開拍！</em></h1><p>不用寫長句子。先按圖卡選故事，網站會幫你寫好首幀、尾幀和影片指示。</p></div>
+      <div className="movie-card"><span className="clap">🎬</span><b>第 1 張圖</b><i>故事開始</i><div className="arrow">↓</div><b>第 2 張圖</b><i>精彩結局</i></div>
+    </section>
 
-  async function loadTeacher() {
-    const response = await fetch(`/api/teacher/students?code=${encodeURIComponent(teacherCode)}`);
-    const result = await response.json();
-    if (!response.ok) return setNotice(result.error);
-    setTeacherStudents(result.students);
-  }
+    <section className="workflow" aria-label="電影創作步驟">
+      <div className="step active"><span>1</span> 揀故事圖卡</div><div className="line"/><div className="step"><span>2</span> 生成兩張圖</div><div className="line"/><div className="step"><span>3</span> 製作影片</div>
+    </section>
 
-  async function adjust(id: string, action: "reset" | "toggle" | "bonus") {
-    const response = await fetch("/api/teacher/students", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ teacherCode, id, action }) });
-    const result = await response.json();
-    if (!response.ok) return setNotice(result.error);
-    await loadTeacher();
-  }
+    <section className="builder">
+      <div className="picker-panel">
+        <p className="eyebrow">步驟 1</p><h2>揀選你的故事</h2><p className="soft">每一行揀一張圖卡，便完成構思！</p>
+        <Choice title="誰是主角？" icon="🧑‍🚀" values={choices.hero} selected={picked.hero} onChoose={(v) => choose("hero", v)}/>
+        <Choice title="故事在哪裏開始？" icon="📍" values={choices.place} selected={picked.place} onChoose={(v) => choose("place", v)}/>
+        <Choice title="一開始發生甚麼？" icon="✨" values={choices.event} selected={picked.event} onChoose={(v) => choose("event", v)}/>
+        <Choice title="最後會怎樣？" icon="🏁" values={choices.ending} selected={picked.ending} onChoose={(v) => choose("ending", v)}/>
+        <Choice title="選擇畫風" icon="🎨" values={choices.style} selected={picked.style} onChoose={(v) => choose("style", v)}/>
+        <Choice title="影片中的動作" icon="🎞️" values={choices.action} selected={picked.action} onChoose={(v) => choose("action", v)}/>
+      </div>
+      <aside className="plan-panel">
+        <p className="eyebrow">你的故事</p>
+        <label>電影名稱<input value={title} maxLength={18} onChange={(e) => setTitle(e.target.value)} /></label>
+        <div className="storyboard"><div className="frame start"><span>第 1 幀・開始</span><strong>{picked.hero}</strong><small>{picked.place}<br/>{picked.event}</small></div><div className="frame end"><span>最後 1 幀・結局</span><strong>{picked.hero}</strong><small>{picked.ending}</small></div></div>
+        <p className="say-it">我拍的《{title || "我的小電影"}》：{picked.hero} 在 {picked.place}，{picked.event}，最後 {picked.ending}！</p>
+      </aside>
+    </section>
 
-  async function download(format: "png" | "jpeg") {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1488;
-    canvas.height = 2078;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const hue = artSeed;
-    ctx.fillStyle = `hsl(${hue}, 68%, 17%)`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#fff9e8";
-    roundRect(ctx, 58, 58, 1372, 1962, 72); ctx.fill();
-    ctx.fillStyle = `hsl(${hue}, 70%, 91%)`;
-    roundRect(ctx, 92, 220, 1304, 1080, 48); ctx.fill();
-    if (artDataUrl) {
-      const image = new Image(); image.src = artDataUrl; await image.decode();
-      ctx.drawImage(image, 112, 240, 1264, 1040);
-    } else drawCreature(ctx, 744, 760, hue);
-    ctx.fillStyle = "#17111d"; ctx.font = "bold 92px Arial"; ctx.fillText(name || "未命名精靈", 112, 168);
-    ctx.font = "bold 66px Arial"; ctx.textAlign = "right"; ctx.fillText(`HP ${hp || "?"}`, 1366, 168); ctx.textAlign = "left";
-    ctx.fillStyle = `hsl(${hue}, 54%, 32%)`; ctx.font = "bold 48px Arial"; ctx.fillText(element || "元素", 112, 1372);
-    ctx.fillStyle = "#17111d"; ctx.font = "bold 58px Arial"; ctx.fillText(skill || "特殊技能", 112, 1510);
-    ctx.font = "42px Arial"; wrapText(ctx, story || "寫下這隻精靈的故事。", 112, 1592, 1260, 58);
-    ctx.fillStyle = "#514b57"; ctx.font = "32px Arial"; ctx.fillText("原創精靈對戰卡・小小 AI 創作家", 112, 1940);
-    const href = canvas.toDataURL(format === "png" ? "image/png" : "image/jpeg", 0.95);
-    const link = document.createElement("a"); link.href = href; link.download = `${name || "精靈卡"}.${format === "png" ? "png" : "jpg"}`; link.click();
-  }
+    <section className="make-section">
+      <div><p className="eyebrow">步驟 2</p><h2>生成兩張關鍵圖片</h2><p>把提示詞複製到老師指定的 AI 繪圖工具。完成後，下載並保留兩張橫向圖片。</p></div>
+      <PromptCard number="A" title="生成第 1 幀：故事開始" text={startPrompt} copied={copied === "首幀"} onCopy={() => copy("首幀", startPrompt)}/>
+      <PromptCard number="B" title="生成最後 1 幀：故事結局" text={endPrompt} copied={copied === "尾幀"} onCopy={() => copy("尾幀", endPrompt)}/>
+    </section>
 
-  return (
-    <main>
-      <header className="topbar">
-        <div className="brand"><span>✦</span><div><strong>精靈卡創作室</strong><small>小小 AI 創作家</small></div></div>
-        <div className="mode-switch"><button className={mode === "student" ? "selected" : ""} onClick={() => setMode("student")}>學生創作室</button><button className={mode === "teacher" ? "selected" : ""} onClick={() => setMode("teacher")}>教師控制台</button></div>
-      </header>
-      {mode === "teacher" ? <section className="teacher-shell"><div className="teacher-head"><p className="eyebrow">教師控制台</p><h1>班房配額，一眼掌握。</h1><p>你可獎勵多 2 次試畫、暫停學生，或重設其配額。</p></div><div className="teacher-login"><input type="password" value={teacherCode} onChange={(e) => setTeacherCode(e.target.value)} placeholder="教師代碼"/><button onClick={loadTeacher}>查看班房</button></div><TeacherTable students={teacherStudents} onAdjust={adjust}/></section> : !student ? <section className="join-shell"><div><p className="eyebrow">第一堂・原創精靈卡</p><h1>設計一隻<br/>從未出現過的精靈。</h1><p>今天你會用清楚 prompt 創作角色，再把它變成可下載、可列印的對戰卡。</p><div className="rules"><span>不輸入個人資料</span><span>不用官方角色或標誌</span><span>AI 結果要自己檢查</span></div></div><form className="join-card" onSubmit={join}><p className="eyebrow">開始創作</p><label>你的創作暱稱<input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="例如：小宇" required/></label><label>班房代碼<input value={classCode} onChange={(e) => setClassCode(e.target.value)} placeholder={classCodeHint} required/></label><button disabled={busy}>{busy ? "正在加入…" : "進入創作室"}</button><small>原型班房代碼：{classCodeHint}</small></form></section> : <section className="studio"><aside className="brief"><p className="eyebrow">你好，{student.displayName}</p><h1>先想清楚，<br/>再讓 AI 幫你畫。</h1><div className="quota"><div><span>快速試畫</span><strong>{trialLeft}<small> / {student.trialLimit}</small></strong></div><div><span>最終成品</span><strong>{finalLeft}<small> / {student.finalLimit}</small></strong></div></div><p className="notice">{notice}</p><button className="ghost" onClick={() => { localStorage.removeItem("star-card-student"); setStudent(null); }}>更換學生</button></aside><section className="editor"><div className="form-grid"><label>精靈名稱<input value={name} onChange={(e) => setName(e.target.value)} /></label><label>屬性<input value={element} onChange={(e) => setElement(e.target.value)} /></label><label>HP<input value={hp} onChange={(e) => setHp(e.target.value)} /></label><label>技能<input value={skill} onChange={(e) => setSkill(e.target.value)} /></label><label className="wide">精靈故事<textarea value={story} onChange={(e) => setStory(e.target.value)} rows={2}/></label><label className="wide">AI 繪圖 prompt<textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4}/><small>提示：描述角色、特徵、動作、場景和畫風；不要用官方角色名稱。</small></label></div><div className="actions"><button className="secondary" onClick={() => generate("trial")} disabled={busy || !trialLeft}>✦ 快速試畫（餘 {trialLeft}）</button><button onClick={() => generate("final")} disabled={busy || !finalLeft}>★ 製作最終圖（餘 {finalLeft}）</button></div></section><section className="preview-column"><div className="card" ref={cardRef}><div className="card-top"><strong>{name || "未命名精靈"}</strong><b>HP {hp || "?"}</b></div><div className="card-art" style={artDataUrl ? { backgroundImage: `url(${artDataUrl})` } : artStyle}><div className="creature"><i/><i/><i/></div></div><p className="element">{element || "元素"}</p><h2>{skill || "特殊技能"}</h2><p className="story">{story || "寫下這隻精靈的故事。"}</p><footer>原創精靈對戰卡</footer></div><div className="download"><button onClick={() => download("png")}>下載 PNG</button><button className="ghost" onClick={() => download("jpeg")}>下載 JPEG</button></div><p className="print-note">PNG 適合列印；可用 63 × 88 mm 卡牌尺寸。</p></section></section>}
-    </main>
-  );
+    <section className="video-section">
+      <div><p className="eyebrow">步驟 3</p><h2>讓兩張圖動起來</h2><p>在老師指定的 AI 影片工具，上載「第 1 幀」和「最後 1 幀」，然後貼上以下影片指示。</p></div>
+      <PromptCard number="▶" title="影片動作指示" text={videoPrompt} copied={copied === "影片"} onCopy={() => copy("影片", videoPrompt)}/>
+      <div className="checklist"><h3>交片前檢查</h3><p>□ 兩張圖都是橫向</p><p>□ 主角在兩張圖中看起來一樣</p><p>□ 沒有個人資料、校名或真實相片</p><p>□ 影片能播放</p></div>
+    </section>
+    <footer>小小 AI 電影工作室　•　AI 會幫忙，但故事是你創作的。</footer>
+  </main>;
 }
 
-function TeacherTable({ students, onAdjust }: { students: TeacherStudent[]; onAdjust: (id: string, action: "reset" | "toggle" | "bonus") => void }) {
-  if (!students.length) return <div className="empty">輸入教師代碼後，這裡會顯示學生的生成次數和配額。</div>;
-  return <div className="table-wrap"><table><thead><tr><th>學生</th><th>試畫</th><th>成品</th><th>總生成</th><th>狀態</th><th>操作</th></tr></thead><tbody>{students.map((student) => <tr key={student.id}><td>{student.display_name}</td><td>{student.trial_used} / {student.trial_limit}</td><td>{student.final_used} / {student.final_limit}</td><td>{student.generations}</td><td><span className={`status ${student.status}`}>{student.status === "active" ? "可創作" : "已暫停"}</span></td><td className="row-actions"><button onClick={() => onAdjust(student.id, "bonus")}>+2 次</button><button onClick={() => onAdjust(student.id, "reset")}>重設</button><button onClick={() => onAdjust(student.id, "toggle")}>{student.status === "active" ? "暫停" : "恢復"}</button></td></tr>)}</tbody></table></div>;
+function Choice({ title, icon, values, selected, onChoose }: { title: string; icon: string; values: readonly string[]; selected: string; onChoose: (value: string) => void }) {
+  return <fieldset className="choice"><legend>{icon} {title}</legend><div>{values.map((value) => <button type="button" className={selected === value ? "picked" : ""} onClick={() => onChoose(value)} key={value}>{value}</button>)}</div></fieldset>;
 }
-
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) { ctx.beginPath(); ctx.roundRect(x, y, width, height, radius); ctx.closePath(); }
-function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) { let line = ""; let currentY = y; for (const char of text) { const test = line + char; if (ctx.measureText(test).width > maxWidth && line) { ctx.fillText(line, x, currentY); line = char; currentY += lineHeight; } else line = test; } ctx.fillText(line, x, currentY); }
-function drawCreature(ctx: CanvasRenderingContext2D, x: number, y: number, hue: number) { ctx.fillStyle = `hsl(${hue}, 78%, 53%)`; ctx.beginPath(); ctx.ellipse(x, y, 350, 310, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#fff"; [[x-120,y-70],[x+120,y-70]].forEach(([ex,ey]) => { ctx.beginPath(); ctx.arc(ex, ey, 80, 0, Math.PI*2); ctx.fill(); ctx.fillStyle="#1b2035"; ctx.beginPath(); ctx.arc(ex, ey, 34, 0, Math.PI*2); ctx.fill(); ctx.fillStyle="#fff"; }); ctx.strokeStyle = "#1b2035"; ctx.lineWidth=30; ctx.beginPath(); ctx.arc(x, y+80, 100, 0, Math.PI); ctx.stroke(); }
+function PromptCard({ number, title, text, copied, onCopy }: { number: string; title: string; text: string; copied: boolean; onCopy: () => void }) {
+  return <article className="prompt-card"><span className="number">{number}</span><div><h3>{title}</h3><p>{text}</p><button onClick={onCopy}>{copied ? "✓ 已複製！" : "複製提示詞"}</button></div></article>;
+}

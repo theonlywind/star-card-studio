@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "精靈卡創作室",
-  description: "小學生專用的原創精靈卡生成與列印原型。",
+  title: "小小 AI 電影工作室",
+  description: "小學生用圖卡構思故事，生成首尾兩幀與 AI 影片提示詞。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
