@@ -90,7 +90,11 @@ function isSafePrompt(prompt: string) {
 
 async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method === "OPTIONS") return json({ ok: true });
-  await ensureSchema(env.DB);
+  try {
+    await ensureSchema(env.DB);
+  } catch (error) {
+    return json({ error: "資料庫初始化失敗。", detail: error instanceof Error ? error.message : String(error) }, 500);
+  }
 
   const clean = (v: unknown, max = 500) => typeof v === "string" ? v.trim().slice(0, max) : "";
   const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((x) => x.toString(16).padStart(2, "0")).join("");
