@@ -44,3 +44,36 @@ export const schemaStatements = [
   )`,
   "CREATE INDEX IF NOT EXISTS generation_logs_student_idx ON generation_logs(student_id)",
 ];
+
+export const classSchemaStatements = [
+  `CREATE TABLE IF NOT EXISTS class_codes (
+    id TEXT PRIMARY KEY,
+    code_hash TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS class_students (
+    id TEXT PRIMARY KEY,
+    code_id TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    video_limit INTEGER NOT NULL DEFAULT 5,
+    video_used INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(code_id) REFERENCES class_codes(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS video_jobs (
+    id TEXT PRIMARY KEY,
+    student_id TEXT NOT NULL,
+    provider_task_id TEXT NOT NULL UNIQUE,
+    prompt TEXT NOT NULL,
+    status TEXT NOT NULL,
+    video_url TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(student_id) REFERENCES class_students(id)
+  )`,
+];
