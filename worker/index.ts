@@ -269,6 +269,7 @@ async function api(request: Request, env: Env) {
     if (path === "/api/teacher/codes" && request.method === "POST") return await makeCodes(request, env);
     if (path === "/api/teacher/students" && request.method === "GET") return await listStudents(request, env);
     if (path === "/api/teacher/students" && request.method === "PATCH") return await updateStudent(request, env);
+    if (path === "/api/teacher/students/delete" && request.method === "POST") return await deleteStudent(request, env);
     if (path === "/api/teacher/students" && request.method === "DELETE") return await deleteStudent(request, env);
     if (path === "/api/image" && request.method === "POST") return await generateImage(request, env);
     if (path === "/api/video" && request.method === "POST") return await startVideo(request, env);
