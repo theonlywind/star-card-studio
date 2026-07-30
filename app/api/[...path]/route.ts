@@ -24,7 +24,7 @@ function view(s: any) { return { id:s.id, displayName:s.display_name, videoLimit
 function code() { return `MOVIE-${Math.floor(100 + Math.random() * 900)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0, 4).toUpperCase()}`; }
 
 type RouteContext = { params: Promise<{ path: string[] }> };
-const apiPath = async ({ params }: RouteContext) => (await params).path.join("/");
+const apiPath = async ({ params }: RouteContext) => (await params).path.join("/").replace(/^api\/?/, "");
 export function OPTIONS() { return new Response(null, { headers: { "access-control-allow-origin": "https://theonlywind.github.io", "access-control-allow-headers": "content-type,x-teacher-code", "access-control-allow-methods": "GET,POST,PATCH,OPTIONS", vary: "Origin" } }); }
 
 export async function GET(request: Request, context: RouteContext) { await schema(); const path = await apiPath(context);
