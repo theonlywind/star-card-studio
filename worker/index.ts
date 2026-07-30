@@ -1,7 +1,5 @@
-/** Cloudflare Worker entry point for the vinext-starter template. */
-import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
+import { DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES, handleImageOptimization } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { schemaStatements, classSchemaStatements } from "../db/schema";
 
 interface Env {
   ASSETS: Fetcher;
@@ -15,7 +13,6 @@ interface Env {
   };
   OPENROUTER_API_KEY?: string;
   ARK_API_KEY?: string;
-  CLASS_ACCESS_CODE?: string;
   TEACHER_ACCESS_CODE?: string;
 }
 
@@ -24,174 +21,265 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-// Image security config. SVG sources with .svg extension auto-skip the
-// optimization endpoint on the client side (served directly, no proxy).
-// To route SVGs through the optimizer (with security headers), set
-// dangerouslyAllowSVG: true in next.config.js and uncomment below:
-// const imageConfig: ImageConfig = { dangerouslyAllowSVG: true };
+type Row = Record<string, unknown>;
 
-const worker = {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (url.pathname.startsWith("/api/")) {
-      return handleApi(request, env, url);
-    }
-
-    if (url.pathname === "/_vinext/image") {
-      const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
-        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
-        transformImage: async (body, { width, format, quality }) => {
-          const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
-          return result.response();
-        },
-      }, allowedWidths);
-    }
-
-    return handler.fetch(request, env, ctx);
-  },
-};
-
-export default worker;
-
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "access-control-allow-origin": "https://theonlywind.github.io", "access-control-allow-methods": "GET,POST,PATCH,OPTIONS", "access-control-allow-headers": "content-type,x-teacher-code" },
-  });
-
+const allowedOrigin = "https://theonlywind.github.io";
 const now = () => new Date().toISOString();
+const clean = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";
+const hash = async (value: string) =>
+  Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 
-async function ensureSchema(db: D1Database) {
-  await db.batch([...schemaStatements, ...classSchemaStatements].map((statement) => db.prepare(statement)));
+function corsHeaders(request: Request) {
+  const origin = request.headers.get("origin");
+  return {
+    "access-control-allow-origin": origin === allowedOrigin ? origin : allowedOrigin,
+    "access-control-allow-headers": "content-type,x-teacher-code",
+    "access-control-allow-methods": "GET,POST,PATCH,OPTIONS",
+    "cache-control": "no-store",
+    "content-type": "application/json; charset=utf-8",
+    vary: "Origin",
+  };
 }
 
-async function readJson(request: Request) {
+function json(request: Request, body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: corsHeaders(request) });
+}
+
+async function body(request: Request): Promise<Row> {
   try {
-    return await request.json<Record<string, unknown>>();
+    return await request.json<Row>();
   } catch {
     return {};
   }
 }
 
-function classCode(env: Env) {
-  return env.CLASS_ACCESS_CODE || "STAR-CARD-2026";
+function safePrompt(prompt: string) {
+  return prompt.length >= 8 &&
+    prompt.length <= 800 &&
+    !/住址|地址|電話|tel|phone|裸體|色情|血腥|成人|裸露/i.test(prompt);
 }
 
-function teacherCode(env: Env) {
-  return env.TEACHER_ACCESS_CODE || "teacher-demo";
+function studentView(row: Row) {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    videoLimit: Number(row.video_limit),
+    videoUsed: Number(row.video_used),
+    status: row.status,
+  };
 }
 
-function isSafePrompt(prompt: string) {
-  const blocked = /pokemon|pokémon|pikachu|charizard|nintendo|暴力|血腥|裸體|色情|地址|電話/i;
-  return prompt.length >= 12 && prompt.length <= 420 && !blocked.test(prompt);
+async function findStudent(env: Env, classCode: string) {
+  return env.DB.prepare(
+    "SELECT s.*, c.id AS code_id, c.active AS code_active FROM class_codes c LEFT JOIN class_students s ON s.code_id=c.id WHERE c.code_hash=?",
+  ).bind(await hash(classCode.toUpperCase())).first<Row>();
 }
 
-async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
-  if (request.method === "OPTIONS") return json({ ok: true });
-  try {
-    await ensureSchema(env.DB);
-  } catch (error) {
-    return json({ error: "資料庫初始化失敗。", detail: error instanceof Error ? error.message : String(error) }, 500);
+function teacherAllowed(request: Request, env: Env, requestBody?: Row) {
+  const supplied = clean(request.headers.get("x-teacher-code") || requestBody?.teacherCode, 128);
+  const configured = clean(env.TEACHER_ACCESS_CODE, 128);
+  return Boolean(configured) && supplied === configured;
+}
+
+async function join(request: Request, env: Env) {
+  const input = await body(request);
+  const displayName = clean(input.displayName, 18);
+  const classCode = clean(input.classCode, 32).toUpperCase();
+  if (!displayName || !classCode) return json(request, { error: "請輸入創作暱稱及學生代碼。" }, 400);
+
+  const found = await findStudent(env, classCode);
+  if (!found || !found.code_active) return json(request, { error: "學生代碼不正確或已停用。" }, 401);
+  if (found.id) {
+    if (found.status !== "active") return json(request, { error: "學生帳戶已暫停，請找老師。" }, 403);
+    return json(request, { student: studentView(found) });
   }
 
-  const clean = (v: unknown, max = 500) => typeof v === "string" ? v.trim().slice(0, max) : "";
-  const digest = async (value: string) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))).map((x) => x.toString(16).padStart(2, "0")).join("");
-  const findStudent = async (code: string) => env.DB.prepare("SELECT s.*, c.active AS code_active FROM class_codes c LEFT JOIN class_students s ON s.code_id=c.id WHERE c.code_hash=?").bind(await digest(code.toUpperCase())).first<Record<string, unknown>>();
-  const teacherOk = (request: Request, body: Record<string, unknown>) => clean(request.headers.get("x-teacher-code") || body.teacherCode, 128) === clean(env.TEACHER_ACCESS_CODE, 128) && Boolean(env.TEACHER_ACCESS_CODE);
+  const id = crypto.randomUUID();
+  const stamp = now();
+  await env.DB.prepare(
+    "INSERT INTO class_students (id,code_id,display_name,created_at,updated_at) VALUES (?,?,?,?,?)",
+  ).bind(id, found.code_id, displayName, stamp, stamp).run();
+  return json(request, { student: { id, displayName, videoLimit: 5, videoUsed: 0, status: "active" } }, 201);
+}
 
-  if (url.pathname === "/api/join" && request.method === "POST") {
-    const body = await readJson(request), displayName = clean(body.displayName, 18), code = clean(body.classCode, 32).toUpperCase();
-    const found = await findStudent(code);
-    if (!displayName || !found || !found.code_active) return json({ error: "學生代碼不正確或已停用。" }, 401);
-    if (found.id) return json({ student: { id:found.id, displayName:found.display_name, videoLimit:found.video_limit, videoUsed:found.video_used, status:found.status } });
-    const id=crypto.randomUUID(), stamp=now(); await env.DB.prepare("INSERT INTO class_students (id,code_id,display_name,created_at,updated_at) VALUES (?,?,?,?,?)").bind(id,found.code_id,displayName,stamp,stamp).run();
-    return json({ student:{id,displayName,videoLimit:5,videoUsed:0,status:"active"} },201);
-  }
-
-  if (url.pathname === "/api/teacher/codes" && request.method === "POST") {
-    const body=await readJson(request); if(!teacherOk(request,body)) return json({error:"教師代碼不正確。"},401);
-    const codes:string[]=[]; for(let i=0;i<Math.min(30,Math.max(1,Number(body.count)||10));i++){const code=`MOVIE-${Math.floor(100+Math.random()*900)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0,4).toUpperCase()}`;codes.push(code);await env.DB.prepare("INSERT INTO class_codes (id,code_hash,label,created_at) VALUES (?,?,?,?)").bind(crypto.randomUUID(),await digest(code),`學生 ${i+1}`,now()).run();} return json({codes},201);
-  }
-
-  if (url.pathname === "/api/students" && request.method === "POST") {
-    const body = await readJson(request);
-    const displayName = String(body.displayName || "").trim().slice(0, 16);
-    if (String(body.classCode || "") !== classCode(env) || displayName.length < 2) {
-      return json({ error: "請輸入正確的班房代碼和 2 至 16 字暱稱。" }, 400);
-    }
-    const id = crypto.randomUUID();
-    const timestamp = now();
+async function makeCodes(request: Request, env: Env) {
+  const input = await body(request);
+  if (!teacherAllowed(request, env, input)) return json(request, { error: "教師代碼不正確。" }, 401);
+  const count = Math.min(30, Math.max(1, Number(input.count) || 10));
+  const codes: string[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const plain = `MOVIE-${Math.floor(100 + Math.random() * 900)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0, 4).toUpperCase()}`;
+    codes.push(plain);
     await env.DB.prepare(
-      "INSERT INTO students (id, display_name, created_at, updated_at) VALUES (?, ?, ?, ?)"
-    ).bind(id, displayName, timestamp, timestamp).run();
-    return json({ id, displayName, trialLimit: 8, trialUsed: 0, finalLimit: 1, finalUsed: 0, status: "active" });
+      "INSERT INTO class_codes (id,code_hash,label,created_at) VALUES (?,?,?,?)",
+    ).bind(crypto.randomUUID(), await hash(plain), `學生 ${index + 1}`, now()).run();
   }
-
-  if (url.pathname === "/api/generate" && request.method === "POST") {
-    const body = await readJson(request);
-    const studentId = String(body.studentId || "");
-    const kind = body.kind === "final" ? "final" : "trial";
-    const prompt = String(body.prompt || "").trim();
-    if (!isSafePrompt(prompt)) {
-      return json({ error: "請使用原創、合適而且較完整的描述；不要輸入官方角色、個人資料或不適當內容。" }, 400);
-    }
-    const student = await env.DB.prepare("SELECT * FROM students WHERE id = ?").bind(studentId).first<Record<string, unknown>>();
-    if (!student || student.status !== "active") return json({ error: "這個創作代碼已無效，請找老師。" }, 403);
-    const usedKey = kind === "final" ? "final_used" : "trial_used";
-    const limitKey = kind === "final" ? "final_limit" : "trial_limit";
-    if (Number(student[usedKey]) >= Number(student[limitKey])) return json({ error: "這個配額已用完，請向老師申請。" }, 403);
-
-    const updatedAt = now();
-    await env.DB.batch([
-      env.DB.prepare(`UPDATE students SET ${usedKey} = ${usedKey} + 1, updated_at = ? WHERE id = ?`).bind(updatedAt, studentId),
-      env.DB.prepare("INSERT INTO generation_logs (id, student_id, kind, prompt, provider_mode, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(crypto.randomUUID(), studentId, kind, prompt, env.OPENROUTER_API_KEY ? "openrouter" : "prototype", updatedAt),
-    ]);
-
-    if (env.OPENROUTER_API_KEY) {
-      const providerPrompt = `Original child-friendly elemental creature concept art for a trading-card illustration. No text, no logos, no existing franchise characters. Centered subject, clean background. ${prompt}`;
-      const response = await fetch("https://openrouter.ai/api/v1/images", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: kind === "final" ? "black-forest-labs/flux.2-pro" : "black-forest-labs/flux.2-klein-4b", prompt: providerPrompt, output_format: "png" }),
-      });
-      const payload = await response.json<Record<string, unknown>>();
-      const image = Array.isArray(payload.data) ? payload.data[0] as Record<string, unknown> : undefined;
-      if (!response.ok || !image?.b64_json) {
-        await env.DB.prepare(`UPDATE students SET ${usedKey} = ${usedKey} - 1 WHERE id = ?`).bind(studentId).run();
-        return json({ error: "圖片服務暫時未能完成，這次不會扣除配額。" }, 502);
-      }
-      return json({ artDataUrl: `data:image/png;base64,${image.b64_json}`, providerMode: "openrouter" });
-    }
-    return json({ artSeed: Math.floor(Math.random() * 360), providerMode: "prototype" });
-  }
-
-  if (url.pathname === "/api/teacher/students" && request.method === "GET") {
-    if (url.searchParams.get("code") !== teacherCode(env)) return json({ error: "教師代碼不正確。" }, 403);
-    const { results } = await env.DB.prepare(
-      "SELECT s.*, (SELECT COUNT(*) FROM generation_logs l WHERE l.student_id = s.id) AS generations FROM students s ORDER BY s.updated_at DESC"
-    ).all();
-    return json({ students: results || [] });
-  }
-
-  if (url.pathname === "/api/teacher/students" && request.method === "PATCH") {
-    const body = await readJson(request);
-    if (String(body.teacherCode || "") !== teacherCode(env)) return json({ error: "教師代碼不正確。" }, 403);
-    const id = String(body.id || "");
-    const action = String(body.action || "");
-    if (action === "reset") {
-      await env.DB.prepare("UPDATE students SET trial_used = 0, final_used = 0, updated_at = ? WHERE id = ?").bind(now(), id).run();
-    } else if (action === "toggle") {
-      await env.DB.prepare("UPDATE students SET status = CASE WHEN status = 'active' THEN 'paused' ELSE 'active' END, updated_at = ? WHERE id = ?").bind(now(), id).run();
-    } else if (action === "bonus") {
-      await env.DB.prepare("UPDATE students SET trial_limit = trial_limit + 2, updated_at = ? WHERE id = ?").bind(now(), id).run();
-    } else {
-      return json({ error: "不支援的教師操作。" }, 400);
-    }
-    return json({ ok: true });
-  }
-
-  return json({ error: "找不到這個服務。" }, 404);
+  return json(request, { codes }, 201);
 }
+
+async function listStudents(request: Request, env: Env) {
+  if (!teacherAllowed(request, env)) return json(request, { error: "教師代碼不正確。" }, 401);
+  const rows = await env.DB.prepare(
+    "SELECT s.* FROM class_students s JOIN class_codes c ON c.id=s.code_id ORDER BY s.created_at DESC",
+  ).all<Row>();
+  return json(request, { students: (rows.results || []).map(studentView) });
+}
+
+async function updateStudent(request: Request, env: Env) {
+  const input = await body(request);
+  if (!teacherAllowed(request, env, input)) return json(request, { error: "教師代碼不正確。" }, 401);
+  const id = clean(input.id, 100);
+  const action = clean(input.action, 20);
+  if (action === "reset") {
+    await env.DB.prepare("UPDATE class_students SET video_used=0,updated_at=? WHERE id=?").bind(now(), id).run();
+  } else if (action === "bonus") {
+    await env.DB.prepare("UPDATE class_students SET video_limit=video_limit+1,updated_at=? WHERE id=?").bind(now(), id).run();
+  } else if (action === "toggle") {
+    await env.DB.prepare(
+      "UPDATE class_students SET status=CASE status WHEN 'active' THEN 'paused' ELSE 'active' END,updated_at=? WHERE id=?",
+    ).bind(now(), id).run();
+  } else {
+    return json(request, { error: "無效操作。" }, 400);
+  }
+  return json(request, { ok: true });
+}
+
+async function generateImage(request: Request, env: Env) {
+  const input = await body(request);
+  const prompt = clean(input.prompt, 700);
+  const classCode = clean(input.classCode, 32).toUpperCase();
+  const student = await findStudent(env, classCode);
+  if (!student?.id || student.status !== "active") return json(request, { error: "學生帳戶不可使用。" }, 403);
+  if (!env.OPENROUTER_API_KEY) return json(request, { error: "未設定圖片生成服務。" }, 503);
+  if (!safePrompt(prompt)) return json(request, { error: "請使用原創、兒童友善描述，且不要輸入個人資料。" }, 400);
+
+  const response = await fetch("https://openrouter.ai/api/v1/images", {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.OPENROUTER_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "black-forest-labs/flux.2-klein-4b",
+      output_format: "png",
+      prompt: `Original child-friendly animation still, 16:9, no real people, no logos, no words, no watermark. ${prompt}`,
+    }),
+  });
+  const payload = await response.json<{ data?: Array<{ b64_json?: string }> }>().catch(() => ({}));
+  const encoded = payload.data?.[0]?.b64_json;
+  if (!response.ok || !encoded) return json(request, { error: "圖片暫時未能生成，請稍後再試。" }, 502);
+  return json(request, { image: `data:image/png;base64,${encoded}` });
+}
+
+async function startVideo(request: Request, env: Env) {
+  const input = await body(request);
+  const classCode = clean(input.classCode, 32).toUpperCase();
+  const prompt = clean(input.prompt, 800);
+  const firstFrame = clean(input.firstFrame, 10_000_000);
+  const lastFrame = clean(input.lastFrame, 10_000_000);
+  if (!env.ARK_API_KEY) return json(request, { error: "未設定 ARK_API_KEY。" }, 503);
+  if (!safePrompt(prompt) || !firstFrame.startsWith("data:image/") || !lastFrame.startsWith("data:image/")) {
+    return json(request, { error: "請先生成兩張原創、兒童友善圖片。" }, 400);
+  }
+
+  const student = await findStudent(env, classCode);
+  if (!student?.id || student.status !== "active") return json(request, { error: "學生帳戶不可使用。" }, 403);
+  if (Number(student.video_used) >= Number(student.video_limit)) {
+    return json(request, { error: "你的 5 次影片配額已用完，請找老師協助。" }, 429);
+  }
+
+  const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks", {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.ARK_API_KEY}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "dreamina-seedance-2-0-mini-260615",
+      content: [
+        { type: "text", text: prompt },
+        { type: "image_url", image_url: { url: firstFrame }, role: "first_frame" },
+        { type: "image_url", image_url: { url: lastFrame }, role: "last_frame" },
+      ],
+      resolution: "480p",
+      ratio: "16:9",
+      duration: 10,
+      watermark: false,
+      generate_audio: false,
+      safety_identifier: student.id,
+    }),
+  });
+  const result = await response.json<{ id?: string; error?: { message?: string } }>().catch(() => ({}));
+  if (!response.ok || !result.id) return json(request, { error: result.error?.message || "影片未能開始；這次不會扣配額。" }, 502);
+
+  const jobId = crypto.randomUUID();
+  const stamp = now();
+  await env.DB.batch([
+    env.DB.prepare("UPDATE class_students SET video_used=video_used+1,updated_at=? WHERE id=?").bind(stamp, student.id),
+    env.DB.prepare(
+      "INSERT INTO video_jobs (id,student_id,provider_task_id,prompt,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)",
+    ).bind(jobId, student.id, result.id, prompt, "queued", stamp, stamp),
+  ]);
+  return json(request, { jobId, videoUsed: Number(student.video_used) + 1, videoLimit: Number(student.video_limit) }, 202);
+}
+
+async function videoStatus(request: Request, env: Env, jobId: string) {
+  const job = await env.DB.prepare("SELECT * FROM video_jobs WHERE id=?").bind(jobId).first<Row>();
+  if (!job) return json(request, { error: "找不到影片工作。" }, 404);
+  if (job.status === "succeeded" || job.status === "failed") return json(request, { job });
+  if (!env.ARK_API_KEY) return json(request, { error: "未設定 ARK_API_KEY。" }, 503);
+
+  const response = await fetch(
+    `https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks/${job.provider_task_id}`,
+    { headers: { authorization: `Bearer ${env.ARK_API_KEY}` } },
+  );
+  const result = await response.json<{
+    status?: string;
+    content?: { video_url?: string };
+    error?: { message?: string };
+  }>().catch(() => ({}));
+  if (!response.ok) return json(request, { error: "暫時未能查詢影片狀態。" }, 502);
+
+  const status = result.status || String(job.status);
+  const videoUrl = result.content?.video_url || null;
+  const errorMessage = result.error?.message || null;
+  await env.DB.prepare(
+    "UPDATE video_jobs SET status=?,video_url=?,error_message=?,updated_at=? WHERE id=?",
+  ).bind(status, videoUrl, errorMessage, now(), jobId).run();
+  return json(request, { job: { ...job, status, video_url: videoUrl, error_message: errorMessage } });
+}
+
+async function api(request: Request, env: Env) {
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders(request) });
+  const path = new URL(request.url).pathname;
+  try {
+    if (path === "/api/health" && request.method === "GET") return json(request, { ok: true });
+    if (path === "/api/join" && request.method === "POST") return await join(request, env);
+    if (path === "/api/teacher/codes" && request.method === "POST") return await makeCodes(request, env);
+    if (path === "/api/teacher/students" && request.method === "GET") return await listStudents(request, env);
+    if (path === "/api/teacher/students" && request.method === "PATCH") return await updateStudent(request, env);
+    if (path === "/api/image" && request.method === "POST") return await generateImage(request, env);
+    if (path === "/api/video" && request.method === "POST") return await startVideo(request, env);
+    if (path.startsWith("/api/video/") && request.method === "GET") return await videoStatus(request, env, path.slice(11));
+    return json(request, { error: "找不到服務。" }, 404);
+  } catch (error) {
+    console.error("Movie API error", error);
+    return json(request, { error: "服務暫時發生錯誤，請稍後再試。" }, 500);
+  }
+}
+
+const worker = {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname.startsWith("/api/")) return api(request, env);
+    if (url.pathname === "/_vinext/image") {
+      const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
+      return handleImageOptimization(request, {
+        fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
+        transformImage: async (stream, { width, format, quality }) => {
+          const result = await env.IMAGES.input(stream).transform(width > 0 ? { width } : {}).output({ format, quality });
+          return result.response();
+        },
+      }, allowedWidths);
+    }
+    return handler.fetch(request, env, ctx);
+  },
+};
+
+export default worker;

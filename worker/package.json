@@ -1,1 +1,0 @@
-{"name":"star-card-api","private":true,"type":"module","scripts":{"dev":"wrangler dev","deploy":"wrangler deploy","db:schema":"wrangler d1 execute star-card-db --remote --file=./schema.sql"},"devDependencies":{"wrangler":"^4.26.1"}}
