@@ -14,7 +14,11 @@ async function schema() { const stamp = now(); await db().batch([
   db().prepare("CREATE TABLE IF NOT EXISTS class_students (id TEXT PRIMARY KEY, code_id TEXT NOT NULL UNIQUE, display_name TEXT NOT NULL, video_limit INTEGER NOT NULL DEFAULT 5, video_used INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'active', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").bind(),
   db().prepare("CREATE TABLE IF NOT EXISTS video_jobs (id TEXT PRIMARY KEY, student_id TEXT NOT NULL, provider_task_id TEXT NOT NULL UNIQUE, prompt TEXT NOT NULL, status TEXT NOT NULL, video_url TEXT, error_message TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)").bind(),
 ]); return stamp; }
-function teacher(request: Request) { return Boolean(runtime.TEACHER_ACCESS_CODE) && request.headers.get("x-teacher-code") === runtime.TEACHER_ACCESS_CODE; }
+function teacher(request: Request) {
+  const supplied = clean(request.headers.get("x-teacher-code"), 128);
+  const configured = clean(runtime.TEACHER_ACCESS_CODE, 128);
+  return Boolean(configured) && supplied === configured;
+}
 async function student(code: string) { const codeHash = await hash(code.toUpperCase()); return db().prepare("SELECT s.*, c.active AS code_active FROM class_codes c LEFT JOIN class_students s ON s.code_id=c.id WHERE c.code_hash=?").bind(codeHash).first<any>(); }
 function view(s: any) { return { id:s.id, displayName:s.display_name, videoLimit:s.video_limit, videoUsed:s.video_used, status:s.status }; }
 function code() { return `MOVIE-${Math.floor(100 + Math.random() * 900)}-${crypto.getRandomValues(new Uint32Array(1))[0].toString(36).slice(0, 4).toUpperCase()}`; }
