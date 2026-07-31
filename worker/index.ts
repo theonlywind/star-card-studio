@@ -26,6 +26,12 @@ type Row = Record<string, unknown>;
 const allowedOrigin = "https://theonlywind.github.io";
 const now = () => new Date().toISOString();
 const clean = (value: unknown, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "";
+const normalizeClassCode = (value: unknown) => clean(value, 32)
+  .normalize("NFKC")
+  .toUpperCase()
+  .replace(/[‐‑‒–—−ー－_]/g, "-")
+  .replace(/[\s-]+/g, "-")
+  .replace(/^-|-$/g, "");
 const hash = async (value: string) =>
   Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))))
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -78,7 +84,7 @@ function studentView(row: Row) {
 async function findStudent(env: Env, classCode: string) {
   return env.DB.prepare(
     "SELECT s.*, c.id AS code_id, c.active AS code_active FROM class_codes c LEFT JOIN class_students s ON s.code_id=c.id WHERE c.code_hash=?",
-  ).bind(await hash(classCode.toUpperCase())).first<Row>();
+  ).bind(await hash(normalizeClassCode(classCode))).first<Row>();
 }
 
 function teacherAllowed(request: Request, env: Env, requestBody?: Row) {
@@ -90,7 +96,7 @@ function teacherAllowed(request: Request, env: Env, requestBody?: Row) {
 async function join(request: Request, env: Env) {
   const input = await body(request);
   const displayName = clean(input.displayName, 18);
-  const classCode = clean(input.classCode, 32).toUpperCase();
+  const classCode = normalizeClassCode(input.classCode);
   if (!displayName || !classCode) return json(request, { error: "請輸入創作暱稱及學生代碼。" }, 400);
 
   const found = await findStudent(env, classCode);
@@ -175,7 +181,7 @@ async function deleteStudent(request: Request, env: Env) {
 async function generateImage(request: Request, env: Env) {
   const input = await body(request);
   const prompt = clean(input.prompt, 700);
-  const classCode = clean(input.classCode, 32).toUpperCase();
+  const classCode = normalizeClassCode(input.classCode);
   const frame = clean(input.frame, 10);
   const student = await findStudent(env, classCode);
   if (!student?.id || student.status !== "active") return json(request, { error: "學生帳戶不可使用。" }, 403);
@@ -204,7 +210,7 @@ async function generateImage(request: Request, env: Env) {
 
 async function startVideo(request: Request, env: Env) {
   const input = await body(request);
-  const classCode = clean(input.classCode, 32).toUpperCase();
+  const classCode = normalizeClassCode(input.classCode);
   const prompt = clean(input.prompt, 800);
   const firstFrame = clean(input.firstFrame, 10_000_000);
   const lastFrame = clean(input.lastFrame, 10_000_000);
