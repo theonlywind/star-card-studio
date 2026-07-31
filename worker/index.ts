@@ -319,6 +319,9 @@ const worker = {
         },
       }, allowedWidths);
     }
+    if (url.pathname === "/student.html") {
+      return env.ASSETS.fetch(new Request(new URL("/student.html", request.url)));
+    }
     return handler.fetch(request, env, ctx);
   },
 };
